@@ -1,0 +1,18 @@
+services:
+  agy-telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agy-telegram-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      AGY_BIN: /usr/local/bin/agy
+      DATA_DIR: /app/data
+      GEMINI_DIR: /root/.gemini
+      APP_DATA_DIR: /root/.gemini/antigravity-cli
+    volumes:
+      - ./data:/app/data
+      - ${HOME}/.gemini:/root/.gemini
+      - ${AGY_HOST_BIN:-/root/.local/bin/agy}:/usr/local/bin/agy:ro

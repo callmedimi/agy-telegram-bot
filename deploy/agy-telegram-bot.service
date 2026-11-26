@@ -1,0 +1,24 @@
+[Unit]
+Description=Antigravity Telegram Bot (agy-telegram-bot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace __USER__, __HOME__, __WORKDIR__, and __PATH__ with your server values
+# (or run `bash scripts/install.sh` to generate and enable automatically).
+User=__USER__
+WorkingDirectory=__WORKDIR__
+Environment=HOME=__HOME__
+Environment=NODE_ENV=production
+Environment=PATH=__PATH__
+EnvironmentFile=-__WORKDIR__/.env
+ExecStart=/usr/bin/env node dist/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agy-telegram-bot
+
+[Install]
+WantedBy=multi-user.target
