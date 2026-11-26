@@ -4,6 +4,7 @@ import type { AgyEffort, AgyPermissionMode } from '../../agy/types.js';
 import { VALID_EFFORTS, VALID_MODES } from '../../config.js';
 import {
   type BotDeps,
+  getThreadId,
   getUserId,
   resolveCallbackPart,
   safeReplyOrEdit,
@@ -19,6 +20,14 @@ import {
   sendTranscriptView,
 } from './chats.js';
 import { renderDashboard } from './dashboard.js';
+import {
+  createNewChatTopic,
+  createTopicForProject,
+  renderForumBindingsList,
+  renderForumPanel,
+  renderForumProjectPicker,
+  syncProjectsToForumTopics,
+} from './forum.js';
 import {
   renderCategoriesMenu,
   renderProjectCategoryPicker,
@@ -43,6 +52,7 @@ export {
   renderChatDetail,
   renderChatsMenu,
   renderDashboard,
+  renderForumPanel,
   renderMcpMenu,
   renderModelsMenu,
   renderPluginsMenu,
@@ -57,6 +67,7 @@ export {
   sendArtifactsList,
   sendSearchResults,
   sendTranscriptView,
+  syncProjectsToForumTopics,
 };
 
 async function safeAnswerCallback(
@@ -266,7 +277,7 @@ export function registerMenuCallbacks(bot: Bot, deps: BotDeps): void {
   handle(/^proj:bindtopic:(.+)$/, async (ctx, data, answer) => {
     const projectId = resolveCallbackPart(data.slice('proj:bindtopic:'.length));
     const chatId = ctx.chat?.id;
-    const threadId = ctx.msg?.message_thread_id;
+    const threadId = getThreadId(ctx);
 
     if (chatId === undefined || threadId === undefined) {
       await answer(
@@ -407,7 +418,7 @@ export function registerMenuCallbacks(bot: Bot, deps: BotDeps): void {
     const baseName = sanitizeFilename(
       meta?.customTitle || conv?.title || convId.slice(0, 16),
     );
-    const threadId = ctx.msg?.message_thread_id;
+    const threadId = getThreadId(ctx);
 
     await answer('⬇️ Exporting Markdown...');
     await ctx.replyWithDocument(
@@ -616,6 +627,37 @@ export function registerMenuCallbacks(bot: Bot, deps: BotDeps): void {
 
   handle('tools:status', async (ctx) => {
     await renderStatusView(ctx, deps, true);
+  });
+
+  // ── Forum Supergroup Automation ─────────────────────────────────────────────
+
+  handle('forum:panel', async (ctx) => {
+    await renderForumPanel(ctx, deps, true);
+  });
+
+  handle('forum:sync', async (ctx, _data, answer) => {
+    await answer('🔄 Syncing projects to topics...');
+    await syncProjectsToForumTopics(ctx, deps);
+  });
+
+  handle(/^forum:pick:(\d+)$/, async (ctx, data) => {
+    const page = Number.parseInt(data.slice('forum:pick:'.length), 10) || 0;
+    await renderForumProjectPicker(ctx, deps, page, true);
+  });
+
+  handle(/^forum:create:(.+)$/, async (ctx, data, answer) => {
+    const projectId = resolveCallbackPart(data.slice('forum:create:'.length));
+    await answer('➕ Creating topic...');
+    await createTopicForProject(ctx, deps, projectId);
+  });
+
+  handle('forum:newchat', async (ctx, _data, answer) => {
+    await answer('🆕 Creating chat topic...');
+    await createNewChatTopic(ctx, deps);
+  });
+
+  handle('forum:list', async (ctx) => {
+    await renderForumBindingsList(ctx, deps, true);
   });
 
   // ── Run Controls ────────────────────────────────────────────────────────────

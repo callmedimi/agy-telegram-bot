@@ -51,6 +51,18 @@ export function getUserId(ctx: Context): number {
   return ctx.from?.id ?? ctx.chat?.id ?? 0;
 }
 
+/**
+ * Extracts the Forum Topic `message_thread_id` from a message or callback query context.
+ */
+export function getThreadId(ctx: Context): number | undefined {
+  const cbMsg = ctx.callbackQuery?.message;
+  const cbThreadId =
+    cbMsg && 'message_thread_id' in cbMsg && typeof cbMsg.message_thread_id === 'number'
+      ? cbMsg.message_thread_id
+      : undefined;
+  return ctx.message?.message_thread_id ?? cbThreadId ?? ctx.msg?.message_thread_id;
+}
+
 function getOrCreateToken(value: string): string {
   const existing = valueToToken.get(value);
   if (existing) {
@@ -146,7 +158,7 @@ export async function safeReplyOrEdit(
     }
   }
 
-  const threadId = ctx.msg?.message_thread_id;
+  const threadId = getThreadId(ctx);
   await ctx.reply(safeText, {
     ...options,
     ...(threadId !== undefined ? { message_thread_id: threadId } : {}),

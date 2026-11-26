@@ -92,5 +92,9 @@ export async function renderDashboard(
     .text('🔍 Search', 'chat:search')
     .text('📊 Status', 'tools:status');
 
+  if (ctx.chat?.type === 'supergroup') {
+    keyboard.row().text('🏛 Forum', 'forum:panel');
+  }
+
   await safeReplyOrEdit(ctx, lines.join('\n'), keyboard, edit);
 }

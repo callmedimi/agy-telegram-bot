@@ -16,6 +16,7 @@ import { BotDb } from '../src/db/bot-db.js';
 const mockMenus = vi.hoisted(() => ({
   registerMenuCallbacks: vi.fn(),
   renderDashboard: vi.fn(async () => {}),
+  renderForumPanel: vi.fn(async () => {}),
   renderProjectsMenu: vi.fn(async () => {}),
   renderCategoriesMenu: vi.fn(async () => {}),
   renderChatsMenu: vi.fn(async () => {}),
@@ -29,6 +30,7 @@ const mockMenus = vi.hoisted(() => ({
   sendArtifactsList: vi.fn(async () => {}),
   sendTranscriptView: vi.fn(async () => {}),
   sendSearchResults: vi.fn(async () => {}),
+  syncProjectsToForumTopics: vi.fn(async () => {}),
 }));
 
 vi.mock('../src/bot/menus/index.js', () => mockMenus);
@@ -351,8 +353,8 @@ describe('bot handlers, commands, and app wiring', () => {
     expect(photos.length + docs.length).toBe(3);
   });
 
-  it('registers all 21 BOT_COMMANDS and handles /new, /mode, /effort, /plan, /topic, /stop', async () => {
-    expect(BOT_COMMANDS).toHaveLength(21);
+  it('registers all 22 BOT_COMMANDS and handles /new, /mode, /effort, /plan, /forum, /topic, /stop', async () => {
+    expect(BOT_COMMANDS).toHaveLength(22);
 
     const bot = new Bot('123456:TEST_TOKEN');
     bot.botInfo = {
@@ -430,6 +432,34 @@ describe('bot handlers, commands, and app wiring', () => {
       },
     });
     expect(db.getTopicBinding(-500, 42)?.projectId).toBe(project.id);
+
+    // /forum
+    await bot.handleUpdate({
+      update_id: 31,
+      message: {
+        message_id: 31,
+        date: 0,
+        chat: { id: -500, type: 'supergroup' },
+        from: { id: 101, is_bot: false, first_name: 'U' },
+        text: '/forum',
+        entities: [{ offset: 0, length: 6, type: 'bot_command' }],
+      },
+    });
+    expect(mockMenus.renderForumPanel).toHaveBeenCalledTimes(1);
+
+    // /topic sync
+    await bot.handleUpdate({
+      update_id: 32,
+      message: {
+        message_id: 32,
+        date: 0,
+        chat: { id: -500, type: 'supergroup' },
+        from: { id: 101, is_bot: false, first_name: 'U' },
+        text: '/topic sync',
+        entities: [{ offset: 0, length: 6, type: 'bot_command' }],
+      },
+    });
+    expect(mockMenus.syncProjectsToForumTopics).toHaveBeenCalledTimes(1);
 
     // /stop
     abortAllCount = 2;

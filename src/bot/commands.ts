@@ -2,13 +2,14 @@ import type { Bot, Context } from 'grammy';
 import type { BotCommand } from 'grammy/types';
 import type { AgyEffort, AgyPermissionMode } from '../agy/types.js';
 import { VALID_EFFORTS, VALID_MODES } from '../config.js';
-import type { BotDeps } from './context.js';
+import { type BotDeps, getThreadId } from './context.js';
 import { escapeHtml } from './formatters.js';
 import { executePrompt } from './handlers/messages.js';
 import {
   renderCategoriesMenu,
   renderChatsMenu,
   renderDashboard,
+  renderForumPanel,
   renderMcpMenu,
   renderModelsMenu,
   renderPluginsMenu,
@@ -19,6 +20,7 @@ import {
   sendArtifactsList,
   sendSearchResults,
   sendTranscriptView,
+  syncProjectsToForumTopics,
 } from './menus/index.js';
 
 export const BOT_COMMANDS: readonly BotCommand[] = [
@@ -38,12 +40,18 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: 'plugins', description: 'Manage plugins' },
   { command: 'artifacts', description: 'List conversation artifacts' },
   { command: 'transcript', description: 'Export conversation transcript' },
+  { command: 'forum', description: 'Automate Forum Supergroup topics' },
   { command: 'topic', description: 'Manage Forum Topic bindings' },
   { command: 'plan', description: 'Run a prompt in plan mode' },
   { command: 'status', description: 'Show session & CLI status' },
   { command: 'stop', description: 'Stop all active agy runs' },
   { command: 'help', description: 'Show command guide' },
 ];
+
+function threadReplyExtra(ctx: Context): { message_thread_id?: number } {
+  const threadId = getThreadId(ctx);
+  return threadId !== undefined ? { message_thread_id: threadId } : {};
+}
 
 function resolveConversationId(ctx: Context, deps: BotDeps, userId: number): string | null {
   const chatId = ctx.chat?.id;
@@ -68,7 +76,8 @@ function buildHelpHtml(): string {
     '/chats — Browse &amp; resume chats',
     '/new [prompt] — Start a new chat (optionally run prompt)',
     '/search [query] — Search conversation history',
-    '/topic [bind &lt;project&gt; | unbind | list] — Bind Forum Topics',
+    '/forum — Automate Forum Supergroup topics',
+    '/topic [sync | bind &lt;project&gt; | unbind | list] — Bind Forum Topics',
     '',
     '<b>Model &amp; Execution</b>',
     '/models — Choose AI model',
@@ -93,8 +102,13 @@ function buildHelpHtml(): string {
 async function handleTopicCommand(ctx: Context, deps: BotDeps): Promise<void> {
   const rawArg = typeof ctx.match === 'string' ? ctx.match.trim() : '';
   const chatId = ctx.chat?.id;
-  const threadId = ctx.message?.message_thread_id;
+  const threadId = getThreadId(ctx);
   const threadExtra = threadId !== undefined ? { message_thread_id: threadId } : {};
+
+  if (rawArg.toLowerCase() === 'sync') {
+    await syncProjectsToForumTopics(ctx, deps);
+    return;
+  }
 
   if (rawArg === 'list' || (!rawArg && threadId === undefined)) {
     const bindings = deps.db.listTopicBindings(chatId);
@@ -191,7 +205,7 @@ async function handleTopicCommand(ctx: Context, deps: BotDeps): Promise<void> {
   }
 
   await ctx.reply(
-    'ℹ️ Usage: <code>/topic bind &lt;project&gt;</code> | <code>/topic unbind</code> | <code>/topic list</code>',
+    'ℹ️ Usage: <code>/topic sync</code> | <code>/topic bind &lt;project&gt;</code> | <code>/topic unbind</code> | <code>/topic list</code>',
     { parse_mode: 'HTML', ...threadExtra },
   );
 }
@@ -264,7 +278,7 @@ export function registerCommands(bot: Bot, deps: BotDeps): void {
       action: 'chat:search',
       createdAt: Date.now(),
     });
-    await ctx.reply('🔍 Send a search query to find conversations:');
+    await ctx.reply('🔍 Send a search query to find conversations:', threadReplyExtra(ctx));
   });
 
   bot.command('models', async (ctx) => {
@@ -285,12 +299,13 @@ export function registerCommands(bot: Bot, deps: BotDeps): void {
       deps.db.updateSession(userId, { mode: arg as AgyPermissionMode });
       await ctx.reply(`✅ Permission mode set to <code>${escapeHtml(arg)}</code>.`, {
         parse_mode: 'HTML',
+        ...threadReplyExtra(ctx),
       });
       return;
     }
     await ctx.reply(
       `❌ Invalid mode. Valid options: <code>${VALID_MODES.join('</code>, <code>')}</code>`,
-      { parse_mode: 'HTML' },
+      { parse_mode: 'HTML', ...threadReplyExtra(ctx) },
     );
   });
 
@@ -308,12 +323,13 @@ export function registerCommands(bot: Bot, deps: BotDeps): void {
       deps.db.updateSession(userId, { effort: arg as AgyEffort });
       await ctx.reply(`✅ Reasoning effort set to <code>${escapeHtml(arg)}</code>.`, {
         parse_mode: 'HTML',
+        ...threadReplyExtra(ctx),
       });
       return;
     }
     await ctx.reply(
       `❌ Invalid effort. Valid options: <code>${VALID_EFFORTS.join('</code>, <code>')}</code>`,
-      { parse_mode: 'HTML' },
+      { parse_mode: 'HTML', ...threadReplyExtra(ctx) },
     );
   });
 
@@ -352,6 +368,10 @@ export function registerCommands(bot: Bot, deps: BotDeps): void {
     await sendTranscriptView(ctx, deps, conversationId ?? undefined);
   });
 
+  bot.command('forum', async (ctx) => {
+    await renderForumPanel(ctx, deps, false);
+  });
+
   bot.command('topic', async (ctx) => {
     await handleTopicCommand(ctx, deps);
   });
@@ -361,6 +381,7 @@ export function registerCommands(bot: Bot, deps: BotDeps): void {
     if (!prompt) {
       await ctx.reply('ℹ️ Usage: <code>/plan &lt;prompt&gt;</code>', {
         parse_mode: 'HTML',
+        ...threadReplyExtra(ctx),
       });
       return;
     }
@@ -377,10 +398,10 @@ export function registerCommands(bot: Bot, deps: BotDeps): void {
       stopped > 0
         ? `🛑 Stopped ${stopped} active run${stopped === 1 ? '' : 's'}.`
         : 'ℹ️ No active runs to stop.';
-    await ctx.reply(msg);
+    await ctx.reply(msg, threadReplyExtra(ctx));
   });
 
   bot.command('help', async (ctx) => {
-    await ctx.reply(buildHelpHtml(), { parse_mode: 'HTML' });
+    await ctx.reply(buildHelpHtml(), { parse_mode: 'HTML', ...threadReplyExtra(ctx) });
   });
 }
